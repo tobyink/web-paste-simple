@@ -1,0 +1,9 @@
+# This file provides instructions for packaging.
+
+`Web-Paste-Simple`
+	perl_version_from m`Web::Paste::Simple`;
+	version_from      m`Web::Paste::Simple`;
+	readme_from       m`Web::Paste::Simple`;
+	test_requires     p`Test::More 0.61` ;
+	.
+
