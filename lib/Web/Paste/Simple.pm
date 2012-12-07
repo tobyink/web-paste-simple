@@ -85,7 +85,7 @@ sub _build_app
 			return $self->_serve_paste($req, $1)->finalize;
 		}
 		elsif ($req->path eq '/') {
-			return $self->_serve_template($req)->finalize;
+			return $self->_serve_template($req, {})->finalize;
 		}
 		else {
 			return $self->_serve_error("Bad URI", 404);
@@ -121,12 +121,7 @@ sub _save_paste
 sub _serve_error
 {
 	my ($self, $err, $code) = @_;
-	$code //= 500;
-	return Response->new(
-		$code,
-		[ 'Content-Type' => 'text/plain' ],
-		"$err\n",
-	);
+	Response->new(($code//500), ['Content-Type' => 'text/plain'], "$err\n");
 }
 
 sub _serve_paste
@@ -136,39 +131,25 @@ sub _serve_paste
 	-r $file or return $self->_serve_error("Bad file", 404);
 	my $data = from_json($file->slurp);
 	
-	if ($req->parameters->{raw}) {
-		return Response->new(
-			200,
-			[ 'Content-Type' => 'text/plain' ],
-			$data->{paste},
-		);
-	}
-	
-	return $self->_serve_template($req, $data);
+	exists $req->parameters->{raw}
+		? Response->new(200, ['Content-Type' => 'text/plain'], $data->{paste})
+		: $self->_serve_template($req, $data);
 }
 
 sub _serve_template
 {
 	my ($self, $req, $data) = @_;
-	
-	$data //= {
-		paste => '',
-		mode  => $self->default_mode,
-	};
-	my %replace = (
-		DATA       => encode_entities_numeric($data->{paste}),
-		MODE       => encode_entities_numeric($data->{mode}),
-		MODES      => $self->modes,
-		PACKAGE    => ref($self),
-		VERSION    => $self->VERSION,
-		CODEMIRROR => $self->codemirror,
-	);	
-	
-	return Response->new(
-		200,
-		[ 'Content-Type' => 'text/html' ],
-		$self->template->fill_in(HASH => \%replace),
+	my $page = $self->template->fill_in(
+		HASH => {
+			DATA       => encode_entities_numeric($data->{paste} // ''),
+			MODE       => encode_entities_numeric($data->{mode}  // $self->default_mode),
+			MODES      => $self->modes,
+			PACKAGE    => ref($self),
+			VERSION    => $self->VERSION,
+			CODEMIRROR => $self->codemirror,
+		},
 	);
+	Response->new(200, ['Content-Type' => 'text/html'], $page);
 }
 
 1;
