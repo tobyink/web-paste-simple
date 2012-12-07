@@ -201,7 +201,7 @@ __DATA__
 		$OUT .= qq[<script src="$CODEMIRROR/mode/$m/$m.js"></script>\n]
 	}
 }
-<form action="/" method="post">
+<form action="" method="post">
 	<div>
 		<select name="mode" onchange="change_mode();">
 			{
