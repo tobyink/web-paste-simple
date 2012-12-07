@@ -115,7 +115,7 @@ sub _save_paste
 		302,
 		[
 			'Content-Type' => 'text/plain',
-			'Location'     => $req->base . $id,
+			'Location'     => $req->base . "/$id",
 		],
 		"Yay!",
 	);
