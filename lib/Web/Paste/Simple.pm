@@ -1,7 +1,9 @@
 package Web::Paste::Simple;
 
 use 5.010;
-use MooX 'late';
+use Moo;
+use MooX::Types::MooseLike::Base qw( Str CodeRef ArrayRef InstanceOf );
+use Carp qw( confess );
 use JSON qw( from_json to_json );
 use HTML::HTML5::Entities qw( encode_entities_numeric );
 use constant read_only => 'ro';
@@ -19,13 +21,13 @@ BEGIN {
 
 has uuid_gen => (
 	is      => read_only,
-	isa     => UUID,
+	isa     => InstanceOf[UUID],
 	default => sub { UUID->new },
 );
 
 has template => (
 	is      => read_only,
-	isa     => Template,
+	isa     => InstanceOf[Template],
 	lazy    => 1,
 	default => sub {
 		return Template->new(
@@ -37,25 +39,26 @@ has template => (
 
 has storage => (
 	is      => read_only,
-	isa     => Dir,
+	isa     => InstanceOf[Dir],
 	default => sub { Dir->new('/tmp/perl-web-paste-simple/') },
 );
 
 has codemirror => (
 	is      => read_only,
-	isa     => 'Str',
-	default => 'http://buzzword.org.uk/2012/codemirror-2.36',
+	isa     => Str,
+	default => sub { 'http://buzzword.org.uk/2012/codemirror-2.36' },
 );
 
 has app => (
 	is      => read_only,
-	isa     => 'CodeRef',
-	lazy_build => 1,
+	isa     => CodeRef,
+	lazy    => 1,
+	builder => '_build_app',
 );
 
 has modes => (
 	is      => read_only,
-	isa     => 'ArrayRef[Str]',
+	isa     => ArrayRef[Str],
 	default => sub {
 		[qw(
 			htmlmixed xml css javascript
@@ -67,8 +70,8 @@ has modes => (
 
 has default_mode => (
 	is      => read_only,
-	isa     => 'Str',
-	default => 'perl',
+	isa     => Str,
+	default => sub { 'perl' },
 );
 
 sub _build_app
@@ -80,23 +83,29 @@ sub _build_app
 		
 	return sub {
 		my $req = Request->new(shift);
-		
-		if ($req->method eq 'POST') {
-			$self->_save_paste($req)->finalize;
-		}
-		elsif ($req->path =~ m{^/([^.]+)}) {
-			return $self->_serve_paste($req, $1)->finalize;
-		}
-		elsif ($req->path eq '/') {
-			return $self->_serve_template($req, {})->finalize;
-		}
-		else {
-			return $self->_serve_error("Bad URI", 404);
-		}
+		$self->dispatch($req)->finalize;
 	};
 }
 
-sub _mk_id
+sub dispatch
+{
+	my ($self, $req) = @_;
+	
+	if ($req->method eq 'POST') {
+		return $self->create_paste($req);
+	}
+	elsif ($req->path =~ m{^/([^.]+)}) {
+		return $self->retrieve_paste($req, $1);
+	}
+	elsif ($req->path eq '/') {
+		return $self->show_template($req, {});
+	}
+	else {
+		return $self->show_error("Bad URI", 404);
+	}
+}
+
+sub make_paste_id
 {
 	my $id = shift->uuid_gen->create_b64;
 	$id =~ tr{+/}{-_};
@@ -104,10 +113,10 @@ sub _mk_id
 	return $id;
 }
 
-sub _save_paste
+sub create_paste
 {
 	my ($self, $req) = @_;
-	my $id = $self->_mk_id;
+	my $id = $self->make_paste_id;
 	$self->storage->file("$id.paste")->spew(
 		to_json( +{ %{$req->parameters} } ),
 	);
@@ -121,25 +130,19 @@ sub _save_paste
 	);
 }
 
-sub _serve_error
-{
-	my ($self, $err, $code) = @_;
-	Response->new(($code//500), ['Content-Type' => 'text/plain'], "$err\n");
-}
-
-sub _serve_paste
+sub retrieve_paste
 {
 	my ($self, $req, $id) = @_;
 	my $file = $self->storage->file("$id.paste");
-	-r $file or return $self->_serve_error("Bad file", 404);
+	-r $file or return $self->show_error("Bad file", 404);
 	my $data = from_json($file->slurp);
 	
 	exists $req->parameters->{raw}
 		? Response->new(200, ['Content-Type' => 'text/plain'], $data->{paste})
-		: $self->_serve_template($req, $data);
+		: $self->show_template($req, $data);
 }
 
-sub _serve_template
+sub show_template
 {
 	my ($self, $req, $data) = @_;
 	my $page = $self->template->fill_in(
@@ -150,10 +153,19 @@ sub _serve_template
 			PACKAGE    => ref($self),
 			VERSION    => $self->VERSION,
 			CODEMIRROR => $self->codemirror,
+			APP        => $self,
+			REQUEST    => $req,
 		},
 	);
 	Response->new(200, ['Content-Type' => 'text/html'], $page);
 }
+
+sub show_error
+{
+	my ($self, $err, $code) = @_;
+	Response->new(($code//500), ['Content-Type' => 'text/plain'], "$err\n");
+}
+
 
 1;
 
@@ -163,7 +175,172 @@ Web::Paste::Simple - simple PSGI-based pastebin-like website
 
 =head1 SYNOPSIS
 
+	#!/usr/bin/plackup
+	use Web::Paste::Simple;
+	Web::Paste::Simple->new(
+		storage    => Path::Class::Dir->new(...),
+		codemirror => "...",
+		template   => Text::Template->new(...),
+	)->app;
+
 =head1 DESCRIPTION
+
+Web::Paste::Simple is a lightweight PSGI app for operating a
+pastebin-like website. It provides syntax highlighting via the
+L<CodeMirror|http://codemirror.net/> Javascript library. It
+should be fast enough for deployment via CGI.
+
+It does not provide any authentication facilities or similar,
+instead relying on you to use subclassing/roles or L<Plack>
+middleware to accomplish such things.
+
+=head2 Constructor
+
+=over
+
+=item C<< new(%attrs) >>
+
+Standard Moose-style constructor.
+
+This class is not based on Moose though; instead it uses L<Moo>.
+
+=back
+
+=head2 Attributes
+
+The following attributes are defined:
+
+=over
+
+=item C<storage>
+
+A L<Path::Class::Dir> indicating the directory where pastes
+should be stored. Pastes are kept indefinitely. Each is a single
+file.
+
+=item C<codemirror>
+
+Path to the CodeMirror syntax highlighter as a string. For example,
+if CodeMirror is available at C<< http://example.com/js/lib/codemirror.js >>
+then this string should be C<< http://example.com/js >> with no trailing
+slash.
+
+This defaults to an address on my server, but for production sites,
+I<please> set up your own copy: it only takes a couple of minutes;
+just a matter of unzipping a single archive. I offer no guarantees
+about the continued availability of my copy of CodeMirror.
+
+Nothing is actually done with this variable, but it's passed to the
+template.
+
+=item C<template>
+
+A L<Text::Template> template which will be used for I<all> HTML output.
+The following variables are available to the template...
+
+=over
+
+=item *
+
+C<< $DATA >> - the text pasted on the curent page (if any), already HTML escaped
+
+=item *
+
+C<< $MODE >> - the currently selected syntax highlighting mode (if any), already HTML escaped
+
+=item *
+
+C<< @MODES >> - all configured highlighting modes
+
+=item *
+
+C<< $CODEMIRROR >> - the path to codemirror
+
+=item *
+
+C<< $APP >> - the blessed Web::Paste::Simple object
+
+=item *
+
+C<< $REQUEST >> - a blessed L<Plack::Request> for the current request
+
+=item *
+
+C<< $PACKAGE >> - the string "Web::Paste::Simple"
+
+=item *
+
+C<< $VERSION >> - the Web::Paste::Simple version number
+
+=back
+
+The default template is minimal, but works.
+
+=item C<modes>
+
+The list of CodeMirror highlighting modes to offer to the user.
+
+Nothing is actually done with this variable, but it's passed to the
+template.
+
+=item C<default_mode>
+
+The default highlighting mode.
+
+=item C<uuid_gen>
+
+A L<Data::UUID> object used to generate URIs. The default should be fine.
+
+=back
+
+=head2 Methods
+
+The following methods may be of interest to people subclassing
+L<Web::Paste::Simple>.
+
+=over
+
+=item C<app>
+
+Technically this is another attribute, but one that should not be set
+in the constructor. Call this method to retrieve the L<PSGI> coderef.
+
+This coderef is built by C<_build_app> (a Moo lazy builder).
+
+=item C<dispatch>
+
+Basic request router/dispatcher. Given a L<Plack::Request>, returns a
+L<Plack::Response>.
+
+=item C<create_paste>
+
+Given a L<Plack::Request> corresponding to an HTTP C<POST> request,
+saves the paste and returns a L<Plack::Reponse>. The response may
+be an arror message, success message, or (as per the current
+implementation) a redirect to the paste's URI.
+
+=item C<retrieve_paste>
+
+Given a L<Plack::Request> and a paste ID, returns a L<Plack::Response>
+with a representation of the paste, or an error message.
+
+=item C<show_error>
+
+Given an error string and optionally an HTTP status code, returns a
+L<Plack::Response>.
+
+=item C<show_template>
+
+Given a L<Plack::Request> and a hashref of data (possibly including
+C<paste> and C<mode> keys) returns a L<Plack::Response> with the rendered
+template, and the pasted data plugged into it.
+
+=item C<make_paste_id>
+
+Returns a unique ID string for a paste. The current implementation is
+a base64-encoded UUID.
+
+=back
 
 =head1 BUGS
 
@@ -171,6 +348,10 @@ Please report any bugs to
 L<http://rt.cpan.org/Dist/Display.html?Queue=Web-Paste-Simple>.
 
 =head1 SEE ALSO
+
+L<Plack>,
+L<Moo>,
+L<CodeMirror|http://codemirror.net/>.
 
 =head1 AUTHOR
 
