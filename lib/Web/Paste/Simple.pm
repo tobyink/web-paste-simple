@@ -3,12 +3,14 @@ package Web::Paste::Simple;
 use 5.010;
 use MooX 'late';
 use JSON qw( from_json to_json );
-use Path::Class qw( file dir );
 use HTML::HTML5::Entities qw( encode_entities_numeric );
-use Text::Template;
+use constant read_only => 'ro';
+use aliased 'Text::Template';
 use aliased 'Data::UUID';
 use aliased 'Plack::Request';
 use aliased 'Plack::Response';
+use aliased 'Path::Class::Dir';
+use aliased 'Path::Class::File';
 
 BEGIN {
 	$Web::Paste::Simple::AUTHORITY = 'cpan:TOBYINK';
@@ -16,16 +18,17 @@ BEGIN {
 }
 
 has uuid_gen => (
-	is      => 'ro',
+	is      => read_only,
+	isa     => UUID,
 	default => sub { UUID->new },
 );
 
 has template => (
-	is      => 'ro',
-	isa     => 'Text::Template',
+	is      => read_only,
+	isa     => Template,
 	lazy    => 1,
 	default => sub {
-		return Text::Template->new(
+		return Template->new(
 			TYPE   => 'FILEHANDLE',
 			SOURCE => \*DATA,
 		);
@@ -33,25 +36,25 @@ has template => (
 );
 
 has storage => (
-	is      => 'ro',
-	isa     => 'Path::Class::Dir',
-	default => sub { dir('/tmp/perl-web-paste-simple/') },
+	is      => read_only,
+	isa     => Dir,
+	default => sub { Dir->new('/tmp/perl-web-paste-simple/') },
 );
 
 has codemirror => (
-	is      => 'ro',
+	is      => read_only,
 	isa     => 'Str',
 	default => 'http://buzzword.org.uk/2012/codemirror-2.36',
 );
 
 has app => (
-	is      => 'ro',
+	is      => read_only,
 	isa     => 'CodeRef',
 	lazy_build => 1,
 );
 
 has modes => (
-	is      => 'ro',
+	is      => read_only,
 	isa     => 'ArrayRef[Str]',
 	default => sub {
 		[qw(
@@ -63,7 +66,7 @@ has modes => (
 );
 
 has default_mode => (
-	is      => 'ro',
+	is      => read_only,
 	isa     => 'Str',
 	default => 'perl',
 );
@@ -200,8 +203,6 @@ __DATA__
 }
 <form action="/" method="post">
 	<div>
-		<textarea name="paste">{$DATA}</textarea>
-		<br>
 		<select name="mode" onchange="change_mode();">
 			{
 				for my $m (@MODES) {
@@ -210,6 +211,8 @@ __DATA__
 			}
 		</select>
 		<input type="submit" value=" Paste ">
+		<br>
+		<textarea name="paste">{$DATA}</textarea>
 	</div>
 </form>
 <script>
