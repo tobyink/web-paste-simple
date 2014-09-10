@@ -1,0 +1,18 @@
+@prefix deps:  <http://ontologi.es/doap-deps#> .
+
+<http://purl.org/NET/cpan-uri/dist/Web-Paste-Simple/project>
+	deps:runtime-requirement         [ deps:on "Plack::Request"^^deps:CpanId ];
+	deps:runtime-requirement         [ deps:on "Plack::Response"^^deps:CpanId ];
+	deps:runtime-requirement         [ deps:on "Path::Class::File"^^deps:CpanId ];
+	deps:runtime-requirement         [ deps:on "Path::Class::Dir"^^deps:CpanId ];
+	deps:runtime-requirement         [ deps:on "Moo 1.000000"^^deps:CpanId ];
+	deps:runtime-requirement         [
+		deps:on "MooX::Types::MooseLike::Base"^^deps:CpanId;
+	];
+	deps:runtime-requirement         [ deps:on "JSON"^^deps:CpanId ];
+	deps:runtime-requirement         [ deps:on "HTML::HTML5::Entities"^^deps:CpanId ];
+	deps:runtime-requirement         [ deps:on "aliased"^^deps:CpanId ];
+	deps:runtime-requirement         [ deps:on "Text::Template"^^deps:CpanId ];
+	deps:runtime-requirement         [ deps:on "Data::UUID"^^deps:CpanId ];
+	deps:test-requirement            [ deps:on "Test::More 0.61"^^deps:CpanId ].
+
