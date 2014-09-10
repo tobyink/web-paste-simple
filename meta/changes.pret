@@ -8,3 +8,10 @@
 	issued  2012-12-13;
 	label   "Initial release".
 
+
+`Web-Paste-Simple 0.002 cpan:TOBYINK`
+	issued    2014-09-10;
+	changeset [
+		item "Switch to Dist::Inkt."^^Packaging;
+	].
+

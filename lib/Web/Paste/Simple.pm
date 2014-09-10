@@ -16,7 +16,7 @@ use aliased 'Path::Class::File';
 
 BEGIN {
 	$Web::Paste::Simple::AUTHORITY = 'cpan:TOBYINK';
-	$Web::Paste::Simple::VERSION   = '0.001';
+	$Web::Paste::Simple::VERSION   = '0.002';
 }
 
 has uuid_gen => (
